@@ -1,0 +1,9 @@
+﻿  Building 'Captain' with toolset 'WindowsKernelModeDriver10.0' and the 'Universal' target platform.
+  Stamping Debug\Captain.inf
+  Stamping [Version] section with DriverVer=07/04/2020,19.17.54.71
+C:\Users\BinaryMalwr\Source\Repos\Captain\Captain\Captain.inf(5-5): warning 1324: [Version] section should specify PnpLockdown=1.
+  code.c
+C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\km\ntifs.h(85,52): error C2371: 'PEPROCESS': redefinition; different basic types
+C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\km\wdm.h(84): message : see declaration of 'PEPROCESS'
+C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\km\ntifs.h(86,49): error C2371: 'PETHREAD': redefinition; different basic types
+C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0\km\wdm.h(85): message : see declaration of 'PETHREAD'

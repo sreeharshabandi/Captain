@@ -1,0 +1,86 @@
+;
+; Captain.inf
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=Sample ; TODO: edit Class
+ClassGuid={78A1C341-4539-11d3-B88D-00C04FAD5171} ; TODO: edit ClassGuid
+Provider=%ManufacturerName%
+CatalogFile=Captain.cat
+DriverVer= ; TODO: set DriverVer in stampinf property pages
+
+[DestinationDirs]
+DefaultDestDir = 12
+Captain_Device_CoInstaller_CopyFiles = 11
+
+; ================= Class section =====================
+
+[ClassInstall32]
+Addreg=SampleClassReg
+
+[SampleClassReg]
+HKR,,,0,%ClassName%
+HKR,,Icon,,-5
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+Captain.sys  = 1,,
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName%=Standard,NT$ARCH$
+
+[Standard.NT$ARCH$]
+%Captain.DeviceDesc%=Captain_Device, Root\Captain ; TODO: edit hw-id
+
+[Captain_Device.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+Captain.sys
+
+;-------------- Service installation
+[Captain_Device.NT.Services]
+AddService = Captain,%SPSVCINST_ASSOCSERVICE%, Captain_Service_Inst
+
+; -------------- Captain driver install sections
+[Captain_Service_Inst]
+DisplayName    = %Captain.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\Captain.sys
+
+;
+;--- Captain_Device Coinstaller installation ------
+;
+
+[Captain_Device.NT.CoInstallers]
+AddReg=Captain_Device_CoInstaller_AddReg
+CopyFiles=Captain_Device_CoInstaller_CopyFiles
+
+[Captain_Device_CoInstaller_AddReg]
+HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfCoInstaller"
+
+[Captain_Device_CoInstaller_CopyFiles]
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
+
+[Captain_Device.NT.Wdf]
+KmdfService =  Captain, Captain_wdfsect
+[Captain_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE= 0x00000002
+ManufacturerName="<Your manufacturer name>" ;TODO: Replace with your manufacturer name
+ClassName="Samples" ; TODO: edit ClassName
+DiskName = "Captain Installation Disk"
+Captain.DeviceDesc = "Captain Device"
+Captain.SVCDESC = "Captain Service"
