@@ -4,13 +4,6 @@ This can be used to subscribe for Process creation, Tread creation and Image Loa
 
 PsCreateProcessNotifyRoutine, PsSetLoadImageNotifyRoutine and PsSetCreateThreadNotifyRoutine Functions are used to add a driver-supplied callback routine to a list of routiens to be called whenever a process is created or deleted, Image is loded and Thread is created or deleted.
 
----
-title:  "Captain! - The kernel tool"
-date:   2020-06-05 14:04:23
-categories: [Device_Drivers]
-tags: [WindowsKernel, Drivers]
----
-
 In this post we will be looking at my recent develpment, <strong>Windows kernel driver - [Captain][linktocaptain].</strong>
 
 <strong> Prior knowledge on the following topics are required: </strong>
@@ -29,7 +22,7 @@ if(fail to have the above required knowledge)
 <p><strong> <code class="highlighter-rouge"> Device I/O Control function: </code></strong></p>
 <p>The DeviceIoControl function provides a interface for an application to communicate with the device driver, and can send control codes to a variety of devices. </p>
 
-![alt text](https://github.com/sreeharshabandi/sreeharshabandi.github.io/blob/master/images/posts_images/ioclt.jpg?raw=true)
+![alt text](https://github.com/sreeharshabandi/images/ioclt.jpg?raw=true)
 
 Control codes can be specified depending on the device being used.
 
