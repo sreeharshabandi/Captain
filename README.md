@@ -22,7 +22,7 @@ if(fail to have the above required knowledge)
 <p><strong> <code class="highlighter-rouge"> Device I/O Control function: </code></strong></p>
 <p>The DeviceIoControl function provides a interface for an application to communicate with the device driver, and can send control codes to a variety of devices. </p>
 
-![alt text](https://github.com/sreeharshabandi/images/ioclt.jpg?raw=true)
+![alt text](https://github.com/sreeharshabandi/images/ioclt.jpg)
 
 Control codes can be specified depending on the device being used.
 
