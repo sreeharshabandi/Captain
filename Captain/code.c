@@ -1,5 +1,5 @@
-#include <ntddk.h>
 #include <ntifs.h>
+#include <ntddk.h>
 #include <wdm.h>
 
 //Driver DIspatch call back function, return type -> STATUS_SUCCESS; takes Device object and *IRP as parameters)

@@ -40,7 +40,6 @@
   <ItemGroup>
     <ClCompile Include="code.c" />
     <ClCompile Include="Device.c" />
-    <ClCompile Include="Driver.c" />
     <ClCompile Include="Queue.c" />
   </ItemGroup>
   <ItemGroup>
