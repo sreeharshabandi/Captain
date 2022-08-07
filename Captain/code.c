@@ -124,6 +124,16 @@ NTSTATUS CustomIOCTL(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	return STATUS_SUCCESS;
 }
 
+void DriverUnload(PDRIVER_OBJECT DriverObject)
+{
+	IoDeleteSymbolicLink(&DEVICE_SYMBOLIC_NAME);
+	IoDeleteDevice(DriverObject->DeviceObject);
+
+	PsSetCreateProcessNotifyRoutine(CreateProcessNotifyRoutine, TRUE);
+	PsRemoveLoadImageNotifyRoutine(LoadImageNotifyRoutine);
+	PsRemoveCreateThreadNotifyRoutine(CreateThreadNotifyRoutine);
+	PsSetCreateProcessNotifyRoutineEx(CreateProcessNotifyRoutineEx, TRUE);
+}
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 {
@@ -137,6 +147,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = CustomIOCTL;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE] = CustomIOCTL;
+
+	DriverObject->DriverUnload = DriverUnload;
 
 	DbgPrint("Driver loaded");
 
