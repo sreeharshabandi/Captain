@@ -5,12 +5,15 @@
 //Driver DIspatch call back function, return type -> STATUS_SUCCESS; takes Device object and *IRP as parameters)
 DRIVER_DISPATCH CustomIOCTL;
 
-/*Defining I/O Control codes; 
+/*Defining I/O Control codes;
 Format: #define IOCTL_DEVICE_FUNCTION CTL_CODE(DeviceType, Function, Method, Access)*/
 
 #define IOCTL_CAPTAIN CTL_CODE(FILE_DEVICE_UNKNOWN, 0x00000022, METHOD_BUFFERED, FILE_ANY_ACCESS)
 UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING(L"\\Device\\CaptainDevice");
 UNICODE_STRING DEVICE_SYMBOLIC_NAME = RTL_CONSTANT_STRING(L"\\??\\CaptainDevice");
+
+// Bypass HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Debug Print Filter
+#define DbgPrint(format, ...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[Captain] " format "\n", __VA_ARGS__)
 
 void CreateProcessNotifyRoutine(HANDLE ppid, HANDLE pid, BOOLEAN create)
 {
@@ -25,7 +28,7 @@ void CreateProcessNotifyRoutine(HANDLE ppid, HANDLE pid, BOOLEAN create)
 		PsLookupProcessByProcessId(pid, &process);
 		SeLocateProcessImageName(process, &processName);
 
-		DbgPrint("%d %wZ\n\t\t%d %wZ", ppid, parentProcessName, pid, processName);
+		DbgPrint("%wZ (%d) created %wZ (%d)", parentProcessName, ppid, processName, pid);
 	}
 	else
 	{
@@ -34,14 +37,14 @@ void CreateProcessNotifyRoutine(HANDLE ppid, HANDLE pid, BOOLEAN create)
 }
 
 void CreateProcessNotifyRoutineEx(PEPROCESS process, HANDLE pid, PPS_CREATE_NOTIFY_INFO createInfo)
-
 {
 	UNREFERENCED_PARAMETER(process);
 	UNREFERENCED_PARAMETER(pid);
 
 	if (createInfo != NULL)
 	{
-		if (wcsstr(createInfo->CommandLine->Buffer, L"notepad") != NULL)
+		PCUNICODE_STRING commandLine = createInfo->CommandLine;
+		if (commandLine != NULL && wcsstr(commandLine->Buffer, L"notepad") != NULL)
 		{
 			DbgPrint("[!] Access to launch notepad.exe was denied!");
 			createInfo->CreationStatus = STATUS_ACCESS_DENIED;
@@ -152,16 +155,36 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 
 	DbgPrint("Driver loaded");
 
-	PsSetCreateProcessNotifyRoutine(CreateProcessNotifyRoutine, FALSE);
-	PsSetLoadImageNotifyRoutine(LoadImageNotifyRoutine);
-	PsSetCreateThreadNotifyRoutine(CreateThreadNotifyRoutine);
-	PsSetCreateProcessNotifyRoutineEx(CreateProcessNotifyRoutineEx, FALSE);
-	DbgPrint("Listeners isntalled..");
-
-	IoCreateDevice(DriverObject, 0, &DEVICE_NAME, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &DriverObject->DeviceObject);
+	status = PsSetCreateProcessNotifyRoutine(CreateProcessNotifyRoutine, FALSE);
 	if (!NT_SUCCESS(status))
 	{
-		DbgPrint("Could not create device %wZ", DEVICE_NAME);
+		DbgPrint("PsSetCreateProcessNotifyRoutine failed (status 0x%08X)", status);
+	}
+
+	status = PsSetLoadImageNotifyRoutine(LoadImageNotifyRoutine);
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrint("PsSetLoadImageNotifyRoutine failed (status 0x%08X)", status);
+	}
+
+	status = PsSetCreateThreadNotifyRoutine(CreateThreadNotifyRoutine);
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrint("PsSetCreateThreadNotifyRoutine failed (status 0x%08X)", status);
+	}
+
+	// You need IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY for this callback
+	status = PsSetCreateProcessNotifyRoutineEx(CreateProcessNotifyRoutineEx, FALSE);
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrint("PsSetCreateProcessNotifyRoutineEx failed (status 0x%08X)", status);
+	}
+	DbgPrint("Listeners installed...");
+
+	status = IoCreateDevice(DriverObject, 0, &DEVICE_NAME, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &DriverObject->DeviceObject);
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrint("Could not create device %wZ (status: 0x%08X)", DEVICE_NAME, status);
 	}
 	else
 	{
@@ -175,7 +198,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 	}
 	else
 	{
-		DbgPrint("Error creating symbolic link %wZ", DEVICE_SYMBOLIC_NAME);
+		DbgPrint("Error creating symbolic link %wZ (status: 0x%08X)", DEVICE_SYMBOLIC_NAME, status);
 	}
 
 	return STATUS_SUCCESS;
