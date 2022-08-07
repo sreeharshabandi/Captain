@@ -8,34 +8,82 @@ DRIVER_DISPATCH CustomIOCTL;
 /*Defining I/O Control codes;
 Format: #define IOCTL_DEVICE_FUNCTION CTL_CODE(DeviceType, Function, Method, Access)*/
 
-#define IOCTL_CAPTAIN CTL_CODE(FILE_DEVICE_UNKNOWN, 0x00000022, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_CAPTAIN CTL_CODE(FILE_DEVICE_UNKNOWN, 0x00000822, METHOD_BUFFERED, FILE_ANY_ACCESS)
 UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING(L"\\Device\\CaptainDevice");
 UNICODE_STRING DEVICE_SYMBOLIC_NAME = RTL_CONSTANT_STRING(L"\\??\\CaptainDevice");
+UNICODE_STRING NULL_STR = RTL_CONSTANT_STRING(L"<NULL>");
 
 // Bypass HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Debug Print Filter
 #define DbgPrint(format, ...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[Captain] " format "\n", __VA_ARGS__)
+
+PUNICODE_STRING SafeString(PUNICODE_STRING str)
+{
+	return str != NULL ? str : &NULL_STR;
+}
+
+PUNICODE_STRING GetImageName(HANDLE pid)
+{
+	PUNICODE_STRING processName = NULL;
+	PEPROCESS process = NULL;
+	if (NT_SUCCESS(PsLookupProcessByProcessId(pid, &process)))
+	{
+		if (!NT_SUCCESS(SeLocateProcessImageName(process, &processName)))
+		{
+			processName = NULL;
+		}
+		ObDereferenceObject(process);
+	}
+	return processName;
+}
 
 void CreateProcessNotifyRoutine(HANDLE ppid, HANDLE pid, BOOLEAN create)
 {
 	if (create)
 	{
-		PEPROCESS process = NULL;
-		PUNICODE_STRING parentProcessName = NULL, processName = NULL;
+		PUNICODE_STRING parentProcessName = GetImageName(ppid);
+		PUNICODE_STRING processName = GetImageName(pid);
 
-		PsLookupProcessByProcessId(ppid, &process);
-		SeLocateProcessImageName(process, &parentProcessName);
+		DbgPrint("%wZ (%u) created %wZ (%d)", SafeString(parentProcessName), ppid, SafeString(processName), pid);
 
-		PsLookupProcessByProcessId(pid, &process);
-		SeLocateProcessImageName(process, &processName);
+		if (processName != NULL)
+		{
+			ExFreePool(processName);
+		}
 
-		DbgPrint("%wZ (%d) created %wZ (%d)", parentProcessName, ppid, processName, pid);
-
-		ExFreePool(processName);
-		ExFreePool(parentProcessName);
+		if (parentProcessName != NULL)
+		{
+			ExFreePool(parentProcessName);
+		}
 	}
 	else
 	{
-		DbgPrint("Process %d lost child %d", ppid, pid);
+		DbgPrint("Process %u lost child %u", ppid, pid);
+	}
+}
+
+void LoadImageNotifyRoutine(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
+{
+	UNREFERENCED_PARAMETER(imageInfo);
+
+	PUNICODE_STRING processName = GetImageName(pid);
+
+	DbgPrint("%wZ (%u) loaded %wZ", SafeString(processName), pid, imageName);
+
+	if (processName != NULL)
+	{
+		ExFreePool(processName);
+	}
+}
+
+void CreateThreadNotifyRoutine(HANDLE pid, HANDLE tid, BOOLEAN create)
+{
+	if (create)
+	{
+		DbgPrint("%u created thread %u", pid, tid);
+	}
+	else
+	{
+		DbgPrint("Thread %u of process %u exited", tid, pid);
 	}
 }
 
@@ -55,39 +103,11 @@ void CreateProcessNotifyRoutineEx(PEPROCESS process, HANDLE pid, PPS_CREATE_NOTI
 	}
 }
 
-void LoadImageNotifyRoutine(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO imageInfo)
-{
-	UNREFERENCED_PARAMETER(imageInfo);
-	PEPROCESS process = NULL;
-	PUNICODE_STRING processName = NULL;
-	PsLookupProcessByProcessId(pid, &process);
-	SeLocateProcessImageName(process, &processName);
-
-	DbgPrint("%wZ (%d) loaded %wZ", processName, pid, imageName);
-
-	ExFreePool(processName);
-}
-
-void CreateThreadNotifyRoutine(HANDLE pid, HANDLE tid, BOOLEAN create)
-{
-	if (create)
-	{
-		DbgPrint("%d created thread %d", pid, tid);
-	}
-	else
-	{
-		DbgPrint("Thread %d of process %d exited", tid, pid);
-	}
-}
-
-
-NTSTATUS MajorFunction(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+NTSTATUS DeviceCreateClose(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
 
-	PIO_STACK_LOCATION stackLocation = NULL;
-	stackLocation = IoGetCurrentIrpStackLocation(Irp);
-
+	PIO_STACK_LOCATION stackLocation = IoGetCurrentIrpStackLocation(Irp);
 	switch (stackLocation->MajorFunction)
 	{
 	case IRP_MJ_CREATE:
@@ -107,25 +127,55 @@ NTSTATUS MajorFunction(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS CustomIOCTL(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+NTSTATUS DeviceIoControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
+
 	PIO_STACK_LOCATION stackLocation = NULL;
 	CHAR* messageFromKernel = "ohai from them kernelz";
 
 	stackLocation = IoGetCurrentIrpStackLocation(Irp);
 
-	if (stackLocation->Parameters.DeviceIoControl.IoControlCode == IOCTL_CAPTAIN)
+	switch (stackLocation->Parameters.DeviceIoControl.IoControlCode)
 	{
-		DbgPrint("IOCTL_SPOTLESS (0x%x) issued", stackLocation->Parameters.DeviceIoControl.IoControlCode);
-		DbgPrint("Input received from userland: %s", (char*)Irp->AssociatedIrp.SystemBuffer);
+	case IOCTL_CAPTAIN:
+	{
+		DbgPrint("IOCTL_CAPTAIN (0x%x) issued", stackLocation->Parameters.DeviceIoControl.IoControlCode);
+
+		// Make sure to not read beyond the SystemBuffer
+		char* systemBuffer = (char*)Irp->AssociatedIrp.SystemBuffer;
+		ULONG inputLength = stackLocation->Parameters.DeviceIoControl.InputBufferLength;
+		ULONG stringLength = (ULONG)strnlen_s(systemBuffer, inputLength);
+		DbgPrint("Input received from userland: %.*s", stringLength, systemBuffer);
+
+		// Amount of space (required) in the output buffer
+		Irp->IoStatus.Information = strlen(messageFromKernel) + 1;
+
+		// Make sure there is enough space in the output buffer
+		if (stackLocation->Parameters.DeviceIoControl.OutputBufferLength > strlen(messageFromKernel))
+		{
+			DbgPrint("Sending to userland: %s", messageFromKernel);
+
+			strcpy(systemBuffer, messageFromKernel);
+
+			Irp->IoStatus.Status = STATUS_SUCCESS;
+		}
+		else
+		{
+			DbgPrint("Buffer not big enough!");
+
+			Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
+		}
 	}
+	break;
 
-	Irp->IoStatus.Information = strlen(messageFromKernel);
-	Irp->IoStatus.Status = STATUS_SUCCESS;
-
-	DbgPrint("Sending to userland: %s", messageFromKernel);
-	RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, messageFromKernel, strlen(Irp->AssociatedIrp.SystemBuffer));
+	default:
+	{
+		Irp->IoStatus.Information = 0;
+		Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+	}
+	break;
+	}
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
@@ -145,20 +195,42 @@ void DriverUnload(PDRIVER_OBJECT DriverObject)
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 {
-	UNREFERENCED_PARAMETER(DriverObject);
 	UNREFERENCED_PARAMETER(RegistryPath);
 
-	NTSTATUS status = 0;
+	DbgPrint("Driver loaded");
 
-	//Routine for handling IO req from higher level, IRP_MJ_DEVICE_CONTROL
-	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = CustomIOCTL;
+	PDEVICE_OBJECT deviceObject = NULL;
+	NTSTATUS status = IoCreateDevice(DriverObject, 0, &DEVICE_NAME, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &deviceObject);
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrint("Could not create device %wZ (status: 0x%08X)", DEVICE_NAME, status);
+		return status;
+	}
+	else
+	{
+		DbgPrint("Device %wZ created", DEVICE_NAME);
+	}
 
-	DriverObject->MajorFunction[IRP_MJ_CREATE] = CustomIOCTL;
-	DriverObject->MajorFunction[IRP_MJ_CLOSE] = CustomIOCTL;
+	status = IoCreateSymbolicLink(&DEVICE_SYMBOLIC_NAME, &DEVICE_NAME);
+	if (!NT_SUCCESS(status))
+	{
+		IoDeleteDevice(deviceObject);
+		DbgPrint("Error creating symbolic link %wZ (status: 0x%08X)", DEVICE_SYMBOLIC_NAME, status);
+		return status;
+	}
+	else
+	{
+		DbgPrint("Symbolic link %wZ created", DEVICE_SYMBOLIC_NAME);
+	}
 
+	// Set IRP routines
+	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DeviceIoControl;
+	DriverObject->MajorFunction[IRP_MJ_CREATE] = DeviceCreateClose;
+	DriverObject->MajorFunction[IRP_MJ_CLOSE] = DeviceCreateClose;
 	DriverObject->DriverUnload = DriverUnload;
 
-	DbgPrint("Driver loaded");
+	// https://docs.microsoft.com/en-us/windows-hardware/drivers/ifs/clearing-the-do-device-initializing-flag
+	ClearFlag(deviceObject->Flags, DO_DEVICE_INITIALIZING);
 
 	status = PsSetCreateProcessNotifyRoutine(CreateProcessNotifyRoutine, FALSE);
 	if (!NT_SUCCESS(status))
@@ -185,26 +257,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 		DbgPrint("PsSetCreateProcessNotifyRoutineEx failed (status 0x%08X)", status);
 	}
 	DbgPrint("Listeners installed...");
-
-	status = IoCreateDevice(DriverObject, 0, &DEVICE_NAME, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &DriverObject->DeviceObject);
-	if (!NT_SUCCESS(status))
-	{
-		DbgPrint("Could not create device %wZ (status: 0x%08X)", DEVICE_NAME, status);
-	}
-	else
-	{
-		DbgPrint("Device %wZ created", DEVICE_NAME);
-	}
-
-	status = IoCreateSymbolicLink(&DEVICE_SYMBOLIC_NAME, &DEVICE_NAME);
-	if (NT_SUCCESS(status))
-	{
-		DbgPrint("Symbolic link %wZ created", DEVICE_SYMBOLIC_NAME);
-	}
-	else
-	{
-		DbgPrint("Error creating symbolic link %wZ (status: 0x%08X)", DEVICE_SYMBOLIC_NAME, status);
-	}
 
 	return STATUS_SUCCESS;
 }

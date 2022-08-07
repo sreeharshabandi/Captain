@@ -65,7 +65,7 @@ define IOCTL_Device_Function CTL_CODE(DeviceType, Function, Method, Access)
 ```
 Example for Captain:
 ``` c++
-define IOCTL_Captain CTL_CODE(FILE_DEVICE_UNKNOWN, 0x00000022, METHOD_BUFFERED, FILE_ANY_ACCESS)
+define IOCTL_Captain CTL_CODE(FILE_DEVICE_UNKNOWN, 0x00000822, METHOD_BUFFERED, FILE_ANY_ACCESS)
 ```
 Details related to Devicetype, Function, Method and Access can be found [here][define_control].
 
