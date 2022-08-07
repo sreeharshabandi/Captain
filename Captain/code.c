@@ -29,6 +29,9 @@ void CreateProcessNotifyRoutine(HANDLE ppid, HANDLE pid, BOOLEAN create)
 		SeLocateProcessImageName(process, &processName);
 
 		DbgPrint("%wZ (%d) created %wZ (%d)", parentProcessName, ppid, processName, pid);
+
+		ExFreePool(processName);
+		ExFreePool(parentProcessName);
 	}
 	else
 	{
@@ -61,6 +64,8 @@ void LoadImageNotifyRoutine(PUNICODE_STRING imageName, HANDLE pid, PIMAGE_INFO i
 	SeLocateProcessImageName(process, &processName);
 
 	DbgPrint("%wZ (%d) loaded %wZ", processName, pid, imageName);
+
+	ExFreePool(processName);
 }
 
 void CreateThreadNotifyRoutine(HANDLE pid, HANDLE tid, BOOLEAN create)
